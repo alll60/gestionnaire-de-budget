@@ -5,16 +5,16 @@ let budgetData = loadData();
 let pieChart = null;
 let barChart = null;
 
-// Couleurs des catégories pour les graphiques (couleurs vives)
+// Palette de graphiques — tons éditoriaux sobres assortis au terminal
 const categoryColors = {
-    'Logement': '#FF1744',      // Rouge vif
-    'Nourriture': '#00B0FF',    // Bleu électrique
-    'Transport': '#FFD600',     // Jaune vif
-    'Services': '#00E676',      // Vert vif
-    'Divertissement': '#D500F9', // Violet vif
-    'Santé': '#FF6D00',         // Orange vif
-    'Magasinage': '#FF4081',    // Rose vif
-    'Autre': '#7C4DFF'          // Mauve vif
+    'Logement':       '#c9a46b',  // or (accent principal)
+    'Nourriture':     '#4ea884',  // vert sobre
+    'Transport':      '#7a9cc6',  // bleu poussiéreux
+    'Services':       '#b8946f',  // bronze
+    'Divertissement': '#a67ba8',  // prune
+    'Santé':          '#c66a5a',  // terracotta
+    'Magasinage':     '#d4a574',  // sable
+    'Autre':          '#8b8a84'   // pierre
 };
 
 // Initialiser l'application
@@ -23,8 +23,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateSummary();
     displayExpenses();
     updateCharts();
-    
-    // Écouteurs d'événements
+
     document.getElementById('prevMonth').addEventListener('click', () => changeMonth(-1));
     document.getElementById('nextMonth').addEventListener('click', () => changeMonth(1));
     document.getElementById('setIncome').addEventListener('click', setIncome);
@@ -33,12 +32,11 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('importData').addEventListener('click', () => document.getElementById('fileInput').click());
     document.getElementById('fileInput').addEventListener('change', importData);
     document.getElementById('clearMonth').addEventListener('click', clearMonth);
-    
-    // Support de la touche Entrée
+
     document.getElementById('incomeAmount').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') setIncome();
     });
-    
+
     document.getElementById('expenseAmount').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') addExpense();
     });
@@ -70,12 +68,12 @@ function setIncome() {
         alert('Veuillez entrer un montant de revenu valide');
         return;
     }
-    
+
     const monthKey = getMonthKey();
     if (!budgetData[monthKey]) {
         budgetData[monthKey] = { income: 0, expenses: [] };
     }
-    
+
     budgetData[monthKey].income = amount;
     saveData();
     updateSummary();
@@ -87,22 +85,22 @@ function addExpense() {
     const name = document.getElementById('expenseName').value.trim();
     const amount = parseFloat(document.getElementById('expenseAmount').value);
     const category = document.getElementById('expenseCategory').value;
-    
+
     if (!name) {
         alert('Veuillez entrer un nom de dépense');
         return;
     }
-    
+
     if (!amount || amount <= 0) {
         alert('Veuillez entrer un montant valide');
         return;
     }
-    
+
     const monthKey = getMonthKey();
     if (!budgetData[monthKey]) {
         budgetData[monthKey] = { income: 0, expenses: [] };
     }
-    
+
     budgetData[monthKey].expenses.push({
         id: Date.now(),
         name: name,
@@ -110,13 +108,12 @@ function addExpense() {
         category: category,
         date: new Date().toISOString()
     });
-    
+
     saveData();
     updateSummary();
     displayExpenses();
     updateCharts();
-    
-    // Effacer les champs
+
     document.getElementById('expenseName').value = '';
     document.getElementById('expenseAmount').value = '';
 }
@@ -124,44 +121,41 @@ function addExpense() {
 function editExpense(id) {
     const monthKey = getMonthKey();
     if (!budgetData[monthKey]) return;
-    
+
     const expense = budgetData[monthKey].expenses.find(e => e.id === id);
     if (!expense) return;
-    
-    // Demander les nouvelles valeurs
+
     const newName = prompt('Nouveau nom de la dépense:', expense.name);
-    if (newName === null) return; // Annulé
-    
+    if (newName === null) return;
+
     const newAmount = prompt('Nouveau montant:', expense.amount);
-    if (newAmount === null) return; // Annulé
-    
+    if (newAmount === null) return;
+
     const parsedAmount = parseFloat(newAmount);
     if (!parsedAmount || parsedAmount <= 0) {
         alert('Montant invalide');
         return;
     }
-    
-    // Demander la nouvelle catégorie
+
     const categories = ['Logement', 'Nourriture', 'Transport', 'Services', 'Divertissement', 'Santé', 'Magasinage', 'Autre'];
     const categoryChoice = prompt(
         'Choisir une catégorie (entrer le numéro):\n' +
         categories.map((cat, i) => `${i + 1}. ${cat}`).join('\n'),
         categories.indexOf(expense.category) + 1
     );
-    
-    if (categoryChoice === null) return; // Annulé
-    
+
+    if (categoryChoice === null) return;
+
     const categoryIndex = parseInt(categoryChoice) - 1;
     if (categoryIndex < 0 || categoryIndex >= categories.length) {
         alert('Catégorie invalide');
         return;
     }
-    
-    // Mettre à jour la dépense
+
     expense.name = newName.trim();
     expense.amount = parsedAmount;
     expense.category = categories[categoryIndex];
-    
+
     saveData();
     updateSummary();
     displayExpenses();
@@ -170,7 +164,7 @@ function editExpense(id) {
 
 function deleteExpense(id) {
     if (!confirm('Supprimer cette dépense?')) return;
-    
+
     const monthKey = getMonthKey();
     if (budgetData[monthKey]) {
         budgetData[monthKey].expenses = budgetData[monthKey].expenses.filter(e => e.id !== id);
@@ -184,12 +178,12 @@ function deleteExpense(id) {
 function displayExpenses() {
     const monthKey = getMonthKey();
     const expensesList = document.getElementById('expensesList');
-    
+
     if (!budgetData[monthKey] || budgetData[monthKey].expenses.length === 0) {
-        expensesList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Aucune dépense pour le moment</p>';
+        expensesList.innerHTML = '<p>Aucune dépense pour le moment</p>';
         return;
     }
-    
+
     const expenses = budgetData[monthKey].expenses;
     expensesList.innerHTML = expenses.map(expense => `
         <div class="expense-item">
@@ -207,29 +201,26 @@ function displayExpenses() {
 function updateSummary() {
     const monthKey = getMonthKey();
     const monthData = budgetData[monthKey] || { income: 0, expenses: [] };
-    
+
     const income = monthData.income;
     const totalExpenses = monthData.expenses.reduce((sum, e) => sum + e.amount, 0);
     const remaining = income - totalExpenses;
-    
+
     document.getElementById('totalIncome').textContent = `${income.toFixed(2)} $`;
     document.getElementById('totalExpenses').textContent = `${totalExpenses.toFixed(2)} $`;
     document.getElementById('remaining').textContent = `${remaining.toFixed(2)} $`;
-    
-    // Changer la couleur selon le solde restant
-    const remainingCard = document.querySelector('.balance-card');
-    if (remaining < 0) {
-        remainingCard.style.background = 'linear-gradient(135deg, #ee0979 0%, #ff6a00 100%)';
-    } else {
-        remainingCard.style.background = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+
+    // Basculer la classe negative pour adapter la couleur au thème
+    const balanceCard = document.querySelector('.balance-card');
+    if (balanceCard) {
+        balanceCard.classList.toggle('negative', remaining < 0);
     }
 }
 
 function updateCharts() {
     const monthKey = getMonthKey();
     const monthData = budgetData[monthKey] || { income: 0, expenses: [] };
-    
-    // Regrouper les dépenses par catégorie
+
     const categoryTotals = {};
     monthData.expenses.forEach(expense => {
         if (!categoryTotals[expense.category]) {
@@ -237,16 +228,19 @@ function updateCharts() {
         }
         categoryTotals[expense.category] += expense.amount;
     });
-    
+
     const categories = Object.keys(categoryTotals);
     const amounts = Object.values(categoryTotals);
-    const colors = categories.map(cat => categoryColors[cat]);
-    
-    // Détruire les graphiques existants
+    const colors = categories.map(cat => categoryColors[cat] || '#8b8a84');
+
     if (pieChart) pieChart.destroy();
     if (barChart) barChart.destroy();
-    
-    // Créer le graphique circulaire
+
+    const gridColor = 'rgba(255, 255, 255, 0.04)';
+    const tickColor = '#5a5955';
+    const textColor = '#e8e6df';
+
+    // Graphique circulaire
     const pieCtx = document.getElementById('pieChart').getContext('2d');
     pieChart = new Chart(pieCtx, {
         type: 'doughnut',
@@ -255,39 +249,57 @@ function updateCharts() {
             datasets: [{
                 data: amounts,
                 backgroundColor: colors,
-                borderWidth: 2,
-                borderColor: '#fff'
+                borderWidth: 1,
+                borderColor: '#11141a'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            cutout: '62%',
             plugins: {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        padding: 15,
+                        padding: 14,
+                        color: textColor,
                         font: {
-                            size: 12
-                        }
+                            family: 'JetBrains Mono, monospace',
+                            size: 11
+                        },
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        usePointStyle: false
                     }
                 },
                 tooltip: {
+                    backgroundColor: '#11141a',
+                    titleColor: '#c9a46b',
+                    bodyColor: '#e8e6df',
+                    borderColor: 'rgba(201, 164, 107, 0.3)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 3,
+                    titleFont: { family: 'JetBrains Mono, monospace', size: 10, weight: '500' },
+                    bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+                    displayColors: true,
+                    boxWidth: 8,
+                    boxHeight: 8,
                     callbacks: {
                         label: function(context) {
                             const label = context.label || '';
                             const value = context.parsed || 0;
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = ((value / total) * 100).toFixed(1);
-                            return `${label}: ${value.toFixed(2)} $ (${percentage}%)`;
+                            return `  ${label}  ${value.toFixed(2)} $ (${percentage}%)`;
                         }
                     }
                 }
             }
         }
     });
-    
-    // Créer le graphique à barres
+
+    // Graphique à barres
     const barCtx = document.getElementById('barChart').getContext('2d');
     barChart = new Chart(barCtx, {
         type: 'bar',
@@ -297,30 +309,53 @@ function updateCharts() {
                 label: 'Montant Dépensé',
                 data: amounts,
                 backgroundColor: colors,
-                borderColor: colors.map(c => c),
-                borderWidth: 2
+                borderColor: colors,
+                borderWidth: 0,
+                borderRadius: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
+                    backgroundColor: '#11141a',
+                    titleColor: '#c9a46b',
+                    bodyColor: '#e8e6df',
+                    borderColor: 'rgba(201, 164, 107, 0.3)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 3,
+                    titleFont: { family: 'JetBrains Mono, monospace', size: 10, weight: '500' },
+                    bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
                     callbacks: {
                         label: function(context) {
-                            return `${context.parsed.y.toFixed(2)} $`;
+                            return `  ${context.parsed.y.toFixed(2)} $`;
                         }
                     }
                 }
             },
             scales: {
+                x: {
+                    grid: { display: false },
+                    border: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: {
+                        color: tickColor,
+                        font: { family: 'JetBrains Mono, monospace', size: 10 },
+                        maxRotation: 30,
+                        minRotation: 0
+                    }
+                },
                 y: {
                     beginAtZero: true,
+                    grid: { color: gridColor, drawBorder: false },
+                    border: { display: false },
                     ticks: {
+                        color: tickColor,
+                        font: { family: 'JetBrains Mono, monospace', size: 10 },
                         callback: function(value) {
+                            if (value >= 1000) return (value / 1000).toFixed(0) + ' k$';
                             return value.toFixed(0) + ' $';
                         }
                     }
@@ -332,7 +367,7 @@ function updateCharts() {
 
 function clearMonth() {
     if (!confirm('Effacer toutes les données de ce mois? Cette action ne peut pas être annulée.')) return;
-    
+
     const monthKey = getMonthKey();
     delete budgetData[monthKey];
     saveData();
@@ -355,7 +390,7 @@ function exportData() {
 function importData(event) {
     const file = event.target.files[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
@@ -373,7 +408,7 @@ function importData(event) {
         }
     };
     reader.readAsText(file);
-    event.target.value = ''; // Réinitialiser l'input de fichier
+    event.target.value = '';
 }
 
 function saveData() {
