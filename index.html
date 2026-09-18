@@ -6,25 +6,32 @@
     <title>Gestionnaire de Budget</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>💰 Gestionnaire de Budget</h1>
+            <h1>&#128176; Gestionnaire de Budget</h1>
+
+            <div class="view-toggle">
+                <button id="viewMonthly" class="toggle-btn active">Mensuel</button>
+                <button id="viewYearly" class="toggle-btn">Annuel</button>
+            </div>
+
             <div class="month-selector">
-                <button id="prevMonth" class="month-btn">←</button>
-                <h2 id="currentMonth"></h2>
-                <button id="nextMonth" class="month-btn">→</button>
+                <button id="prevPeriod" class="month-btn">&larr;</button>
+                <h2 id="currentPeriod"></h2>
+                <button id="nextPeriod" class="month-btn">&rarr;</button>
             </div>
         </header>
 
         <div class="summary-cards">
             <div class="card income-card">
-                <h3>Revenu Mensuel</h3>
+                <h3 id="incomeLabel">Revenu Mensuel</h3>
                 <p class="amount" id="totalIncome">0,00 $</p>
             </div>
             <div class="card expense-card">
-                <h3>Dépenses Totales</h3>
+                <h3>D&eacute;penses Totales</h3>
                 <p class="amount" id="totalExpenses">0,00 $</p>
             </div>
             <div class="card balance-card">
@@ -35,55 +42,57 @@
 
         <div class="main-content">
             <div class="left-panel">
-                <div class="section">
-                    <h3>💵 Définir le Revenu Mensuel</h3>
+                <div class="section" id="incomeSection">
+                    <h3>&#128181; D&eacute;finir le Revenu Mensuel</h3>
                     <div class="input-group">
                         <input type="number" id="incomeAmount" placeholder="Entrer le montant" step="0.01">
-                        <button id="setIncome" class="btn-primary">Définir le Revenu</button>
+                        <button id="setIncome" class="btn-primary">D&eacute;finir le Revenu</button>
                     </div>
                 </div>
 
-                <div class="section">
-                    <h3>➕ Ajouter une Dépense</h3>
+                <div class="section" id="expenseSection">
+                    <h3>&#10133; Ajouter une D&eacute;pense</h3>
                     <div class="input-group">
-                        <input type="text" id="expenseName" placeholder="Nom de la dépense">
+                        <input type="text" id="expenseName" placeholder="Nom de la d&eacute;pense">
                         <input type="number" id="expenseAmount" placeholder="Montant" step="0.01">
                         <select id="expenseCategory">
-                            <option value="Logement">🏠 Logement</option>
-                            <option value="Nourriture">🍔 Nourriture</option>
-                            <option value="Transport">🚗 Transport</option>
-                            <option value="Services">💡 Services</option>
-                            <option value="Divertissement">🎮 Divertissement</option>
-                            <option value="Santé">🏥 Santé</option>
-                            <option value="Magasinage">🛍️ Magasinage</option>
-                            <option value="Autre">📦 Autre</option>
+                            <option value="Logement">&#127968; Logement</option>
+                            <option value="Nourriture">&#127828; Nourriture</option>
+                            <option value="Transport">&#128663; Transport</option>
+                            <option value="Services">&#128161; Services</option>
+                            <option value="Divertissement">&#127918; Divertissement</option>
+                            <option value="Sant&eacute;">&#127973; Sant&eacute;</option>
+                            <option value="Magasinage">&#128717; Magasinage</option>
+                            <option value="Autre">&#128230; Autre</option>
                         </select>
-                        <button id="addExpense" class="btn-primary">Ajouter la Dépense</button>
+                        <button id="addExpense" class="btn-primary">Ajouter la D&eacute;pense</button>
                     </div>
                 </div>
 
                 <div class="section">
-                    <h3>📋 Liste des Dépenses</h3>
+                    <h3 id="listTitle">&#128203; Liste des D&eacute;penses</h3>
                     <div id="expensesList"></div>
                 </div>
             </div>
 
             <div class="right-panel">
                 <div class="chart-container">
-                    <h3>Dépenses par Catégorie</h3>
+                    <h3>D&eacute;penses par Cat&eacute;gorie</h3>
                     <canvas id="pieChart"></canvas>
                 </div>
                 <div class="chart-container">
-                    <h3>Répartition par Catégorie</h3>
+                    <h3 id="barTitle">R&eacute;partition par Cat&eacute;gorie</h3>
                     <canvas id="barChart"></canvas>
                 </div>
             </div>
         </div>
 
         <div class="actions">
-            <button id="exportData" class="btn-secondary">📥 Exporter les Données</button>
-            <button id="importData" class="btn-secondary">📤 Importer les Données</button>
-            <button id="clearMonth" class="btn-danger">🗑️ Effacer ce Mois</button>
+            <button id="exportCSV" class="btn-secondary">&#128202; Exporter CSV</button>
+            <button id="exportPDF" class="btn-secondary">&#128196; Exporter PDF</button>
+            <button id="exportData" class="btn-secondary">&#128229; Sauvegarde JSON</button>
+            <button id="importData" class="btn-secondary">&#128228; Importer JSON</button>
+            <button id="clearMonth" class="btn-danger">&#128465; Effacer cette p&eacute;riode</button>
         </div>
     </div>
 
