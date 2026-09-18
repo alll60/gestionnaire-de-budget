@@ -12,17 +12,22 @@ const CATEGORIES = ['Logement', 'Nourriture', 'Transport', 'Services',
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
                      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
-// Couleurs des catégories pour les graphiques (couleurs vives)
+// Palette sourde accordée au thème sombre
 const categoryColors = {
-    'Logement': '#FF1744',
-    'Nourriture': '#00B0FF',
-    'Transport': '#FFD600',
-    'Services': '#00E676',
-    'Divertissement': '#D500F9',
-    'Santé': '#FF6D00',
-    'Magasinage': '#FF4081',
-    'Autre': '#7C4DFF'
+    'Logement': '#D6A96A',
+    'Nourriture': '#6FB79A',
+    'Transport': '#6E8FC4',
+    'Services': '#B57BA6',
+    'Divertissement': '#C9705C',
+    'Santé': '#9AA45C',
+    'Magasinage': '#8C7BC4',
+    'Autre': '#7E8A92'
 };
+
+// Accord des graphiques avec le fond sombre
+Chart.defaults.color = '#8B8F94';
+Chart.defaults.font.family = "'IBM Plex Sans', sans-serif";
+Chart.defaults.font.size = 12;
 
 document.addEventListener('DOMContentLoaded', function () {
     refreshAll();
@@ -268,9 +273,7 @@ function updateSummary() {
     document.getElementById('remaining').textContent = money(remaining);
 
     const remainingCard = document.querySelector('.balance-card');
-    remainingCard.style.background = remaining < 0
-        ? 'linear-gradient(135deg, #ee0979 0%, #ff6a00 100%)'
-        : 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+    remainingCard.classList.toggle('negative', remaining < 0);
 }
 
 function getCategoryTotals() {
@@ -286,7 +289,7 @@ function updateCharts() {
     const categoryTotals = getCategoryTotals();
     const categories = Object.keys(categoryTotals);
     const amounts = Object.values(categoryTotals);
-    const colors = categories.map(cat => categoryColors[cat] || '#999999');
+    const colors = categories.map(cat => categoryColors[cat] || '#7E8A92');
 
     if (pieChart) pieChart.destroy();
     if (barChart) barChart.destroy();
@@ -296,7 +299,7 @@ function updateCharts() {
         type: 'doughnut',
         data: {
             labels: categories,
-            datasets: [{ data: amounts, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }]
+            datasets: [{ data: amounts, backgroundColor: colors, borderWidth: 2, borderColor: '#0E0F11' }]
         },
         options: {
             responsive: true,
@@ -325,7 +328,7 @@ function updateCharts() {
             const d = budgetData[key];
             return d ? (d.expenses || []).reduce((s, e) => s + e.amount, 0) : 0;
         });
-        barColors = barValues.map(() => '#00B0FF');
+        barColors = barValues.map(() => '#D6A96A');
     } else {
         barLabels = categories;
         barValues = amounts;
@@ -353,7 +356,8 @@ function updateCharts() {
                 tooltip: { callbacks: { label: (c) => money(c.parsed.y) } }
             },
             scales: {
-                y: { beginAtZero: true, ticks: { callback: (v) => v.toFixed(0) + ' $' } }
+                y: { beginAtZero: true, grid: { color: '#1F2327' }, ticks: { callback: (v) => v.toFixed(0) + ' $' } },
+                x: { grid: { display: false } }
             }
         }
     });
