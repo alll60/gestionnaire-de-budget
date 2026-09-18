@@ -1,66 +1,134 @@
 // Gestionnaire de Budget - JavaScript
 
 let currentDate = new Date();
+let viewMode = 'monthly'; // 'monthly' ou 'yearly'
 let budgetData = loadData();
 let pieChart = null;
 let barChart = null;
 
-// Palette de graphiques — tons éditoriaux sobres assortis au terminal
+const CATEGORIES = ['Logement', 'Nourriture', 'Transport', 'Services',
+                    'Divertissement', 'Santé', 'Magasinage', 'Autre'];
+
+const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+                     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+// Couleurs des catégories pour les graphiques (couleurs vives)
 const categoryColors = {
-    'Logement':       '#c9a46b',  // or (accent principal)
-    'Nourriture':     '#4ea884',  // vert sobre
-    'Transport':      '#7a9cc6',  // bleu poussiéreux
-    'Services':       '#b8946f',  // bronze
-    'Divertissement': '#a67ba8',  // prune
-    'Santé':          '#c66a5a',  // terracotta
-    'Magasinage':     '#d4a574',  // sable
-    'Autre':          '#8b8a84'   // pierre
+    'Logement': '#FF1744',
+    'Nourriture': '#00B0FF',
+    'Transport': '#FFD600',
+    'Services': '#00E676',
+    'Divertissement': '#D500F9',
+    'Santé': '#FF6D00',
+    'Magasinage': '#FF4081',
+    'Autre': '#7C4DFF'
 };
 
-// Initialiser l'application
-document.addEventListener('DOMContentLoaded', function() {
-    updateMonthDisplay();
-    updateSummary();
-    displayExpenses();
-    updateCharts();
+document.addEventListener('DOMContentLoaded', function () {
+    refreshAll();
 
-    document.getElementById('prevMonth').addEventListener('click', () => changeMonth(-1));
-    document.getElementById('nextMonth').addEventListener('click', () => changeMonth(1));
+    document.getElementById('prevPeriod').addEventListener('click', () => changePeriod(-1));
+    document.getElementById('nextPeriod').addEventListener('click', () => changePeriod(1));
+    document.getElementById('viewMonthly').addEventListener('click', () => setView('monthly'));
+    document.getElementById('viewYearly').addEventListener('click', () => setView('yearly'));
     document.getElementById('setIncome').addEventListener('click', setIncome);
     document.getElementById('addExpense').addEventListener('click', addExpense);
+    document.getElementById('exportCSV').addEventListener('click', exportCSV);
+    document.getElementById('exportPDF').addEventListener('click', exportPDF);
     document.getElementById('exportData').addEventListener('click', exportData);
     document.getElementById('importData').addEventListener('click', () => document.getElementById('fileInput').click());
     document.getElementById('fileInput').addEventListener('change', importData);
-    document.getElementById('clearMonth').addEventListener('click', clearMonth);
+    document.getElementById('clearMonth').addEventListener('click', clearPeriod);
 
     document.getElementById('incomeAmount').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') setIncome();
     });
-
     document.getElementById('expenseAmount').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') addExpense();
     });
 });
 
-function getMonthKey() {
-    return `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+/* ---------- Helpers ---------- */
+
+function getMonthKey(d = currentDate) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function updateMonthDisplay() {
-    const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-                       'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-    const monthName = monthNames[currentDate.getMonth()];
+function getYearKeys() {
     const year = currentDate.getFullYear();
-    document.getElementById('currentMonth').textContent = `${monthName} ${year}`;
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
 }
 
-function changeMonth(delta) {
-    currentDate.setMonth(currentDate.getMonth() + delta);
-    updateMonthDisplay();
+function money(v) {
+    return `${v.toFixed(2)} $`;
+}
+
+// Retourne { income, expenses } pour la période courante
+function getPeriodData() {
+    if (viewMode === 'monthly') {
+        const d = budgetData[getMonthKey()] || { income: 0, expenses: [] };
+        return { income: d.income || 0, expenses: d.expenses || [] };
+    }
+    let income = 0;
+    let expenses = [];
+    getYearKeys().forEach(key => {
+        const d = budgetData[key];
+        if (!d) return;
+        income += d.income || 0;
+        expenses = expenses.concat((d.expenses || []).map(e => ({ ...e, month: key })));
+    });
+    return { income, expenses };
+}
+
+function isYearly() {
+    return viewMode === 'yearly';
+}
+
+/* ---------- Vue / navigation ---------- */
+
+function setView(mode) {
+    viewMode = mode;
+    document.getElementById('viewMonthly').classList.toggle('active', mode === 'monthly');
+    document.getElementById('viewYearly').classList.toggle('active', mode === 'yearly');
+
+    const yearly = isYearly();
+    document.getElementById('incomeSection').style.display = yearly ? 'none' : 'block';
+    document.getElementById('expenseSection').style.display = yearly ? 'none' : 'block';
+    document.getElementById('incomeLabel').textContent = yearly ? 'Revenu Annuel' : 'Revenu Mensuel';
+    document.getElementById('listTitle').innerHTML = yearly
+        ? '&#128203; R&eacute;sum&eacute; par Mois'
+        : '&#128203; Liste des D&eacute;penses';
+    document.getElementById('barTitle').innerHTML = yearly
+        ? 'D&eacute;penses par Mois'
+        : 'R&eacute;partition par Cat&eacute;gorie';
+
+    refreshAll();
+}
+
+function changePeriod(delta) {
+    if (isYearly()) {
+        currentDate.setFullYear(currentDate.getFullYear() + delta);
+    } else {
+        currentDate.setMonth(currentDate.getMonth() + delta);
+    }
+    refreshAll();
+}
+
+function updatePeriodDisplay() {
+    const year = currentDate.getFullYear();
+    document.getElementById('currentPeriod').textContent = isYearly()
+        ? `${year}`
+        : `${MONTH_NAMES[currentDate.getMonth()]} ${year}`;
+}
+
+function refreshAll() {
+    updatePeriodDisplay();
     updateSummary();
     displayExpenses();
     updateCharts();
 }
+
+/* ---------- Saisie ---------- */
 
 function setIncome() {
     const amount = parseFloat(document.getElementById('incomeAmount').value);
@@ -68,16 +136,11 @@ function setIncome() {
         alert('Veuillez entrer un montant de revenu valide');
         return;
     }
-
     const monthKey = getMonthKey();
-    if (!budgetData[monthKey]) {
-        budgetData[monthKey] = { income: 0, expenses: [] };
-    }
-
+    if (!budgetData[monthKey]) budgetData[monthKey] = { income: 0, expenses: [] };
     budgetData[monthKey].income = amount;
     saveData();
-    updateSummary();
-    updateCharts();
+    refreshAll();
     document.getElementById('incomeAmount').value = '';
 }
 
@@ -86,20 +149,11 @@ function addExpense() {
     const amount = parseFloat(document.getElementById('expenseAmount').value);
     const category = document.getElementById('expenseCategory').value;
 
-    if (!name) {
-        alert('Veuillez entrer un nom de dépense');
-        return;
-    }
-
-    if (!amount || amount <= 0) {
-        alert('Veuillez entrer un montant valide');
-        return;
-    }
+    if (!name) { alert('Veuillez entrer un nom de dépense'); return; }
+    if (!amount || amount <= 0) { alert('Veuillez entrer un montant valide'); return; }
 
     const monthKey = getMonthKey();
-    if (!budgetData[monthKey]) {
-        budgetData[monthKey] = { income: 0, expenses: [] };
-    }
+    if (!budgetData[monthKey]) budgetData[monthKey] = { income: 0, expenses: [] };
 
     budgetData[monthKey].expenses.push({
         id: Date.now(),
@@ -110,10 +164,7 @@ function addExpense() {
     });
 
     saveData();
-    updateSummary();
-    displayExpenses();
-    updateCharts();
-
+    refreshAll();
     document.getElementById('expenseName').value = '';
     document.getElementById('expenseAmount').value = '';
 }
@@ -121,7 +172,6 @@ function addExpense() {
 function editExpense(id) {
     const monthKey = getMonthKey();
     if (!budgetData[monthKey]) return;
-
     const expense = budgetData[monthKey].expenses.find(e => e.id === id);
     if (!expense) return;
 
@@ -132,66 +182,76 @@ function editExpense(id) {
     if (newAmount === null) return;
 
     const parsedAmount = parseFloat(newAmount);
-    if (!parsedAmount || parsedAmount <= 0) {
-        alert('Montant invalide');
-        return;
-    }
+    if (!parsedAmount || parsedAmount <= 0) { alert('Montant invalide'); return; }
 
-    const categories = ['Logement', 'Nourriture', 'Transport', 'Services', 'Divertissement', 'Santé', 'Magasinage', 'Autre'];
     const categoryChoice = prompt(
         'Choisir une catégorie (entrer le numéro):\n' +
-        categories.map((cat, i) => `${i + 1}. ${cat}`).join('\n'),
-        categories.indexOf(expense.category) + 1
+        CATEGORIES.map((cat, i) => `${i + 1}. ${cat}`).join('\n'),
+        CATEGORIES.indexOf(expense.category) + 1
     );
-
     if (categoryChoice === null) return;
 
     const categoryIndex = parseInt(categoryChoice) - 1;
-    if (categoryIndex < 0 || categoryIndex >= categories.length) {
-        alert('Catégorie invalide');
-        return;
-    }
+    if (categoryIndex < 0 || categoryIndex >= CATEGORIES.length) { alert('Catégorie invalide'); return; }
 
     expense.name = newName.trim();
     expense.amount = parsedAmount;
-    expense.category = categories[categoryIndex];
+    expense.category = CATEGORIES[categoryIndex];
 
     saveData();
-    updateSummary();
-    displayExpenses();
-    updateCharts();
+    refreshAll();
 }
 
 function deleteExpense(id) {
     if (!confirm('Supprimer cette dépense?')) return;
-
     const monthKey = getMonthKey();
     if (budgetData[monthKey]) {
         budgetData[monthKey].expenses = budgetData[monthKey].expenses.filter(e => e.id !== id);
         saveData();
-        updateSummary();
-        displayExpenses();
-        updateCharts();
+        refreshAll();
     }
 }
 
-function displayExpenses() {
-    const monthKey = getMonthKey();
-    const expensesList = document.getElementById('expensesList');
+/* ---------- Affichage ---------- */
 
-    if (!budgetData[monthKey] || budgetData[monthKey].expenses.length === 0) {
-        expensesList.innerHTML = '<p>Aucune dépense pour le moment</p>';
+function displayExpenses() {
+    const expensesList = document.getElementById('expensesList');
+    const { expenses } = getPeriodData();
+
+    if (expenses.length === 0) {
+        expensesList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Aucune dépense pour le moment</p>';
         return;
     }
 
-    const expenses = budgetData[monthKey].expenses;
+    if (isYearly()) {
+        // Résumé par mois
+        const rows = getYearKeys().map((key, i) => {
+            const d = budgetData[key];
+            if (!d) return null;
+            const total = (d.expenses || []).reduce((s, e) => s + e.amount, 0);
+            const income = d.income || 0;
+            if (total === 0 && income === 0) return null;
+            const solde = income - total;
+            return `
+                <div class="expense-item">
+                    <div class="expense-info">
+                        <div class="expense-name">${MONTH_NAMES[i]}</div>
+                        <div class="expense-category">Revenu: ${money(income)} &bull; Solde: ${money(solde)}</div>
+                    </div>
+                    <span class="expense-amount">${money(total)}</span>
+                </div>`;
+        }).filter(Boolean);
+        expensesList.innerHTML = rows.join('');
+        return;
+    }
+
     expensesList.innerHTML = expenses.map(expense => `
         <div class="expense-item">
             <div class="expense-info">
                 <div class="expense-name">${expense.name}</div>
                 <div class="expense-category">${expense.category}</div>
             </div>
-            <span class="expense-amount">${expense.amount.toFixed(2)} $</span>
+            <span class="expense-amount">${money(expense.amount)}</span>
             <button class="edit-btn" onclick="editExpense(${expense.id})">Modifier</button>
             <button class="delete-btn" onclick="deleteExpense(${expense.id})">Supprimer</button>
         </div>
@@ -199,99 +259,57 @@ function displayExpenses() {
 }
 
 function updateSummary() {
-    const monthKey = getMonthKey();
-    const monthData = budgetData[monthKey] || { income: 0, expenses: [] };
-
-    const income = monthData.income;
-    const totalExpenses = monthData.expenses.reduce((sum, e) => sum + e.amount, 0);
+    const { income, expenses } = getPeriodData();
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const remaining = income - totalExpenses;
 
-    document.getElementById('totalIncome').textContent = `${income.toFixed(2)} $`;
-    document.getElementById('totalExpenses').textContent = `${totalExpenses.toFixed(2)} $`;
-    document.getElementById('remaining').textContent = `${remaining.toFixed(2)} $`;
+    document.getElementById('totalIncome').textContent = money(income);
+    document.getElementById('totalExpenses').textContent = money(totalExpenses);
+    document.getElementById('remaining').textContent = money(remaining);
 
-    // Basculer la classe negative pour adapter la couleur au thème
-    const balanceCard = document.querySelector('.balance-card');
-    if (balanceCard) {
-        balanceCard.classList.toggle('negative', remaining < 0);
-    }
+    const remainingCard = document.querySelector('.balance-card');
+    remainingCard.style.background = remaining < 0
+        ? 'linear-gradient(135deg, #ee0979 0%, #ff6a00 100%)'
+        : 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+}
+
+function getCategoryTotals() {
+    const { expenses } = getPeriodData();
+    const totals = {};
+    expenses.forEach(e => {
+        totals[e.category] = (totals[e.category] || 0) + e.amount;
+    });
+    return totals;
 }
 
 function updateCharts() {
-    const monthKey = getMonthKey();
-    const monthData = budgetData[monthKey] || { income: 0, expenses: [] };
-
-    const categoryTotals = {};
-    monthData.expenses.forEach(expense => {
-        if (!categoryTotals[expense.category]) {
-            categoryTotals[expense.category] = 0;
-        }
-        categoryTotals[expense.category] += expense.amount;
-    });
-
+    const categoryTotals = getCategoryTotals();
     const categories = Object.keys(categoryTotals);
     const amounts = Object.values(categoryTotals);
-    const colors = categories.map(cat => categoryColors[cat] || '#8b8a84');
+    const colors = categories.map(cat => categoryColors[cat] || '#999999');
 
     if (pieChart) pieChart.destroy();
     if (barChart) barChart.destroy();
 
-    const gridColor = 'rgba(255, 255, 255, 0.04)';
-    const tickColor = '#5a5955';
-    const textColor = '#e8e6df';
-
-    // Graphique circulaire
     const pieCtx = document.getElementById('pieChart').getContext('2d');
     pieChart = new Chart(pieCtx, {
         type: 'doughnut',
         data: {
             labels: categories,
-            datasets: [{
-                data: amounts,
-                backgroundColor: colors,
-                borderWidth: 1,
-                borderColor: '#11141a'
-            }]
+            datasets: [{ data: amounts, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            cutout: '62%',
             plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        padding: 14,
-                        color: textColor,
-                        font: {
-                            family: 'JetBrains Mono, monospace',
-                            size: 11
-                        },
-                        boxWidth: 10,
-                        boxHeight: 10,
-                        usePointStyle: false
-                    }
-                },
+                legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
                 tooltip: {
-                    backgroundColor: '#11141a',
-                    titleColor: '#c9a46b',
-                    bodyColor: '#e8e6df',
-                    borderColor: 'rgba(201, 164, 107, 0.3)',
-                    borderWidth: 1,
-                    padding: 12,
-                    cornerRadius: 3,
-                    titleFont: { family: 'JetBrains Mono, monospace', size: 10, weight: '500' },
-                    bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
-                    displayColors: true,
-                    boxWidth: 8,
-                    boxHeight: 8,
                     callbacks: {
-                        label: function(context) {
-                            const label = context.label || '';
+                        label: function (context) {
                             const value = context.parsed || 0;
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = ((value / total) * 100).toFixed(1);
-                            return `  ${label}  ${value.toFixed(2)} $ (${percentage}%)`;
+                            const pct = total ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.label}: ${money(value)} (${pct}%)`;
                         }
                     }
                 }
@@ -299,19 +317,32 @@ function updateCharts() {
         }
     });
 
-    // Graphique à barres
+    // Barres : par mois en vue annuelle, par catégorie en vue mensuelle
+    let barLabels, barValues, barColors;
+    if (isYearly()) {
+        barLabels = MONTH_NAMES.map(m => m.substring(0, 3));
+        barValues = getYearKeys().map(key => {
+            const d = budgetData[key];
+            return d ? (d.expenses || []).reduce((s, e) => s + e.amount, 0) : 0;
+        });
+        barColors = barValues.map(() => '#00B0FF');
+    } else {
+        barLabels = categories;
+        barValues = amounts;
+        barColors = colors;
+    }
+
     const barCtx = document.getElementById('barChart').getContext('2d');
     barChart = new Chart(barCtx, {
         type: 'bar',
         data: {
-            labels: categories,
+            labels: barLabels,
             datasets: [{
                 label: 'Montant Dépensé',
-                data: amounts,
-                backgroundColor: colors,
-                borderColor: colors,
-                borderWidth: 0,
-                borderRadius: 2
+                data: barValues,
+                backgroundColor: barColors,
+                borderColor: barColors,
+                borderWidth: 2
             }]
         },
         options: {
@@ -319,71 +350,166 @@ function updateCharts() {
             maintainAspectRatio: true,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#11141a',
-                    titleColor: '#c9a46b',
-                    bodyColor: '#e8e6df',
-                    borderColor: 'rgba(201, 164, 107, 0.3)',
-                    borderWidth: 1,
-                    padding: 12,
-                    cornerRadius: 3,
-                    titleFont: { family: 'JetBrains Mono, monospace', size: 10, weight: '500' },
-                    bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
-                    callbacks: {
-                        label: function(context) {
-                            return `  ${context.parsed.y.toFixed(2)} $`;
-                        }
-                    }
-                }
+                tooltip: { callbacks: { label: (c) => money(c.parsed.y) } }
             },
             scales: {
-                x: {
-                    grid: { display: false },
-                    border: { color: 'rgba(255,255,255,0.1)' },
-                    ticks: {
-                        color: tickColor,
-                        font: { family: 'JetBrains Mono, monospace', size: 10 },
-                        maxRotation: 30,
-                        minRotation: 0
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: gridColor, drawBorder: false },
-                    border: { display: false },
-                    ticks: {
-                        color: tickColor,
-                        font: { family: 'JetBrains Mono, monospace', size: 10 },
-                        callback: function(value) {
-                            if (value >= 1000) return (value / 1000).toFixed(0) + ' k$';
-                            return value.toFixed(0) + ' $';
-                        }
-                    }
-                }
+                y: { beginAtZero: true, ticks: { callback: (v) => v.toFixed(0) + ' $' } }
             }
         }
     });
 }
 
-function clearMonth() {
-    if (!confirm('Effacer toutes les données de ce mois? Cette action ne peut pas être annulée.')) return;
+/* ---------- Effacer ---------- */
 
-    const monthKey = getMonthKey();
-    delete budgetData[monthKey];
+function clearPeriod() {
+    if (isYearly()) {
+        if (!confirm(`Effacer toutes les données de ${currentDate.getFullYear()}? Cette action ne peut pas être annulée.`)) return;
+        getYearKeys().forEach(key => delete budgetData[key]);
+    } else {
+        if (!confirm('Effacer toutes les données de ce mois? Cette action ne peut pas être annulée.')) return;
+        delete budgetData[getMonthKey()];
+    }
     saveData();
-    updateSummary();
-    displayExpenses();
-    updateCharts();
+    refreshAll();
+}
+
+/* ---------- Exports ---------- */
+
+function periodLabel() {
+    return isYearly()
+        ? `${currentDate.getFullYear()}`
+        : `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+}
+
+function periodSlug() {
+    return isYearly() ? `${currentDate.getFullYear()}` : getMonthKey();
+}
+
+function exportCSV() {
+    const { income, expenses } = getPeriodData();
+    if (expenses.length === 0 && income === 0) {
+        alert('Aucune donnée à exporter pour cette période');
+        return;
+    }
+
+    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [];
+
+    lines.push(esc('Période') + ',' + esc(periodLabel()));
+    lines.push('');
+    lines.push(['Mois', 'Nom', 'Catégorie', 'Montant'].map(esc).join(','));
+
+    if (isYearly()) {
+        expenses.forEach(e => {
+            const idx = parseInt(e.month.split('-')[1], 10) - 1;
+            lines.push([MONTH_NAMES[idx], e.name, e.category, e.amount.toFixed(2)].map(esc).join(','));
+        });
+    } else {
+        expenses.forEach(e => {
+            lines.push([periodLabel(), e.name, e.category, e.amount.toFixed(2)].map(esc).join(','));
+        });
+    }
+
+    const totals = getCategoryTotals();
+    lines.push('');
+    lines.push(['Catégorie', 'Total'].map(esc).join(','));
+    Object.entries(totals).forEach(([cat, tot]) => {
+        lines.push([cat, tot.toFixed(2)].map(esc).join(','));
+    });
+
+    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    lines.push('');
+    lines.push([esc('Revenu'), esc(income.toFixed(2))].join(','));
+    lines.push([esc('Dépenses'), esc(totalExpenses.toFixed(2))].join(','));
+    lines.push([esc('Reste'), esc((income - totalExpenses).toFixed(2))].join(','));
+
+    // BOM pour qu'Excel lise les accents correctement
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    downloadBlob(blob, `budget-${periodSlug()}.csv`);
+}
+
+function exportPDF() {
+    const { income, expenses } = getPeriodData();
+    if (expenses.length === 0 && income === 0) {
+        alert('Aucune donnée à exporter pour cette période');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    const remaining = income - totalExpenses;
+
+    let y = 20;
+    doc.setFontSize(18);
+    doc.text('Gestionnaire de Budget', 14, y);
+    y += 8;
+    doc.setFontSize(12);
+    doc.text(periodLabel(), 14, y);
+    y += 10;
+
+    doc.setFontSize(11);
+    doc.text(`Revenu: ${money(income)}`, 14, y); y += 6;
+    doc.text(`Dépenses: ${money(totalExpenses)}`, 14, y); y += 6;
+    doc.text(`Reste: ${money(remaining)}`, 14, y); y += 10;
+
+    doc.setFontSize(13);
+    doc.text('Par catégorie', 14, y); y += 7;
+    doc.setFontSize(10);
+    Object.entries(getCategoryTotals()).forEach(([cat, tot]) => {
+        const pct = totalExpenses ? ((tot / totalExpenses) * 100).toFixed(1) : '0.0';
+        doc.text(`${cat}`, 16, y);
+        doc.text(`${money(tot)}  (${pct}%)`, 120, y);
+        y += 6;
+        if (y > 275) { doc.addPage(); y = 20; }
+    });
+
+    y += 6;
+    if (y > 260) { doc.addPage(); y = 20; }
+    doc.setFontSize(13);
+    doc.text(isYearly() ? 'Détail par mois' : 'Détail des dépenses', 14, y);
+    y += 7;
+    doc.setFontSize(10);
+
+    if (isYearly()) {
+        getYearKeys().forEach((key, i) => {
+            const d = budgetData[key];
+            if (!d) return;
+            const tot = (d.expenses || []).reduce((s, e) => s + e.amount, 0);
+            if (tot === 0 && !(d.income)) return;
+            doc.text(MONTH_NAMES[i], 16, y);
+            doc.text(`Revenu ${money(d.income || 0)}`, 70, y);
+            doc.text(`Dépenses ${money(tot)}`, 130, y);
+            y += 6;
+            if (y > 275) { doc.addPage(); y = 20; }
+        });
+    } else {
+        expenses.forEach(e => {
+            doc.text(e.name.substring(0, 30), 16, y);
+            doc.text(e.category, 90, y);
+            doc.text(money(e.amount), 150, y);
+            y += 6;
+            if (y > 275) { doc.addPage(); y = 20; }
+        });
+    }
+
+    doc.save(`budget-${periodSlug()}.pdf`);
 }
 
 function exportData() {
     const dataStr = JSON.stringify(budgetData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    downloadBlob(blob, `donnees-budget-${new Date().toISOString().split('T')[0]}.json`);
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `donnees-budget-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = filename;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
 }
 
@@ -392,15 +518,13 @@ function importData(event) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
         try {
             const importedData = JSON.parse(e.target.result);
             if (confirm('Importer ces données? Les données actuelles seront remplacées.')) {
                 budgetData = importedData;
                 saveData();
-                updateSummary();
-                displayExpenses();
-                updateCharts();
+                refreshAll();
                 alert('Données importées avec succès!');
             }
         } catch (error) {
