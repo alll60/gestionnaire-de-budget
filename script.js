@@ -520,23 +520,78 @@ function downloadBlob(blob, filename) {
 function importData(event) {
     const file = event.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = function (e) {
+        const text = e.target.result;
         try {
-            const importedData = JSON.parse(e.target.result);
-            if (confirm('Importer ces données? Les données actuelles seront remplacées.')) {
+            const importedData = JSON.parse(text);
+            if (confirm('Importer ces données JSON? Les données actuelles seront remplacées.')) {
                 budgetData = importedData;
                 saveData();
                 refreshAll();
                 alert('Données importées avec succès!');
             }
-        } catch (error) {
-            alert('Erreur lors de l\'importation des données. Veuillez vérifier le format du fichier.');
+        } catch (_) {
+            importCSV(text);
         }
     };
     reader.readAsText(file);
     event.target.value = '';
+}
+
+function importCSV(text) {
+    function parseRow(line) {
+        const result = []; let cur = '', inQ = false;
+        for (let i = 0; i < line.length; i++) {
+            const c = line[i];
+            if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+            else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+            else cur += c;
+        }
+        result.push(cur.trim());
+        return result;
+    }
+    try {
+        const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
+        const periodRow = parseRow(lines[0]);
+        const periodVal = (periodRow[1] || '').trim();
+        const isYearlyCSV = /^\d{4}$/.test(periodVal);
+        const year = isYearlyCSV ? parseInt(periodVal) : parseInt(periodVal.split(' ').pop());
+        if (!year || isNaN(year)) throw new Error('Année introuvable');
+
+        let headerIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+            const r = parseRow(lines[i]);
+            if (r[1] && r[3] && (r[0] === 'Mois' || r[0] === 'Month')) { headerIdx = i; break; }
+        }
+        if (headerIdx === -1) throw new Error('En-tête de colonnes introuvable');
+
+        const imported = {};
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+            const row = parseRow(lines[i]);
+            const amount = parseFloat(row[3]);
+            if (!row[1] || isNaN(amount)) break;
+            let monthIdx = MONTH_NAMES.findIndex(m => row[0].startsWith(m));
+            if (monthIdx === -1) continue;
+            const key = `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+            if (!imported[key]) imported[key] = { income: 0, expenses: [] };
+            imported[key].expenses.push({ id: Date.now() + Math.random(), name: row[1], amount, category: row[2], date: new Date().toISOString() });
+        }
+
+        const total = Object.values(imported).reduce((s, d) => s + d.expenses.length, 0);
+        if (total === 0) throw new Error('Aucune dépense trouvée dans le fichier');
+
+        if (confirm(`Importer ${total} dépenses depuis le CSV?\nFusion avec les données existantes.`)) {
+            Object.entries(imported).forEach(([key, d]) => {
+                if (!budgetData[key]) budgetData[key] = { income: 0, expenses: [] };
+                budgetData[key].expenses = [...budgetData[key].expenses, ...d.expenses];
+            });
+            saveData(); refreshAll();
+            alert('CSV importé avec succès!');
+        }
+    } catch (err) {
+        alert('Erreur import CSV: ' + err.message);
+    }
 }
 
 function saveData() {
