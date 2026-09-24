@@ -525,15 +525,12 @@ function importData(event) {
         const text = e.target.result;
         try {
             const importedData = JSON.parse(text);
-            if (confirm('Importer ces données JSON? Les données actuelles seront remplacées.')) {
+            if (confirm('Importer ces donnees JSON? Les donnees actuelles seront remplacees.')) {
                 budgetData = importedData;
-                saveData();
-                refreshAll();
-                alert('Données importées avec succès!');
+                saveData(); refreshAll();
+                alert('Donnees importees avec succes!');
             }
-        } catch (_) {
-            importCSV(text);
-        }
+        } catch (_) { importCSV(text); }
     };
     reader.readAsText(file);
     event.target.value = '';
@@ -552,45 +549,56 @@ function importCSV(text) {
         return result;
     }
     try {
-        const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
-        const periodRow = parseRow(lines[0]);
-        const periodVal = (periodRow[1] || '').trim();
-        const isYearlyCSV = /^\d{4}$/.test(periodVal);
-        const year = isYearlyCSV ? parseInt(periodVal) : parseInt(periodVal.split(' ').pop());
-        if (!year || isNaN(year)) throw new Error('Année introuvable');
+        const BOM = '\uFEFF';
+        const lines = text.replace(BOM,'').replace(/\r/g,'').split('\n');
 
-        let headerIdx = -1;
-        for (let i = 0; i < lines.length; i++) {
-            const r = parseRow(lines[i]);
-            if (r[1] && r[3] && (r[0] === 'Mois' || r[0] === 'Month')) { headerIdx = i; break; }
+        let year = null;
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const r = parseRow(line);
+            const k0 = r[0].trim();
+            if (k0 === 'P\u00e9riode' || k0 === 'Period') {
+                year = parseInt((r[1] || '').trim().split(' ').pop());
+                break;
+            }
         }
-        if (headerIdx === -1) throw new Error('En-tête de colonnes introuvable');
+        if (!year || isNaN(year)) throw new Error('Ann\u00e9e introuvable dans le fichier');
 
+        const FR_MONTHS = MONTH_NAMES; // already defined globally
         const imported = {};
-        for (let i = headerIdx + 1; i < lines.length; i++) {
-            const row = parseRow(lines[i]);
+        let counter = 0;
+
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const row = parseRow(line);
+            if (row.length < 4) continue;
             const amount = parseFloat(row[3]);
-            if (!row[1] || isNaN(amount)) break;
-            let monthIdx = MONTH_NAMES.findIndex(m => row[0].startsWith(m));
+            if (isNaN(amount) || amount <= 0) continue;
+            if (!row[1] || !row[2]) continue;
+            const monthIdx = FR_MONTHS.findIndex(m => row[0].startsWith(m));
             if (monthIdx === -1) continue;
-            const key = `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
-            if (!imported[key]) imported[key] = { income: 0, expenses: [] };
-            imported[key].expenses.push({ id: Date.now() + Math.random(), name: row[1], amount, category: row[2], date: new Date().toISOString() });
+            const mKey = year + '-' + String(monthIdx + 1).padStart(2, '0');
+            if (!imported[mKey]) imported[mKey] = { income: 0, expenses: [] };
+            imported[mKey].expenses.push({
+                id: Date.now() * 1000 + counter++,
+                name: row[1], amount: amount, category: row[2],
+                date: new Date().toISOString()
+            });
         }
 
         const total = Object.values(imported).reduce((s, d) => s + d.expenses.length, 0);
-        if (total === 0) throw new Error('Aucune dépense trouvée dans le fichier');
+        if (total === 0) throw new Error('Aucune d\u00e9pense valide trouv\u00e9e dans le fichier');
 
-        if (confirm(`Importer ${total} dépenses depuis le CSV?\nFusion avec les données existantes.`)) {
-            Object.entries(imported).forEach(([key, d]) => {
-                if (!budgetData[key]) budgetData[key] = { income: 0, expenses: [] };
-                budgetData[key].expenses = [...budgetData[key].expenses, ...d.expenses];
+        if (confirm('Importer ' + total + ' d\u00e9pense(s) depuis le CSV ?\nFusion avec les donn\u00e9es existantes.')) {
+            Object.entries(imported).forEach(([k, d]) => {
+                if (!budgetData[k]) budgetData[k] = { income: 0, expenses: [] };
+                budgetData[k].expenses = [...budgetData[k].expenses, ...d.expenses];
             });
             saveData(); refreshAll();
-            alert('CSV importé avec succès!');
+            alert('\u2713 ' + total + ' d\u00e9pense(s) import\u00e9e(s) avec succ\u00e8s !');
         }
     } catch (err) {
-        alert('Erreur import CSV: ' + err.message);
+        alert('Erreur import CSV :\n' + err.message);
     }
 }
 
