@@ -540,10 +540,10 @@ function importData(event) {
 }
 
 function saveData() {
-    localStorage.setItem('budgetData', JSON.stringify(budgetData));
+    localStorage.setItem('budgetData_fr', JSON.stringify(budgetData));
 }
 
 function loadData() {
-    const saved = localStorage.getItem('budgetData');
+    const saved = localStorage.getItem('budgetData_fr');
     return saved ? JSON.parse(saved) : {};
 }
