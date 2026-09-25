@@ -12,6 +12,13 @@ const CATEGORIES = ['Logement', 'Nourriture', 'Transport', 'Services',
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
                      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
+const FREQUENCIES = ['once', 'monthly', 'annual'];
+const FREQUENCY_LABELS = { once: 'Une fois', monthly: 'Mensuelle', annual: 'Annuelle' };
+
+function frequencyLabel(freq) {
+    return FREQUENCY_LABELS[freq] || FREQUENCY_LABELS.once;
+}
+
 // Palette sourde accordée au thème sombre
 const categoryColors = {
     'Logement': '#D6A96A',
@@ -68,20 +75,120 @@ function money(v) {
     return `${v.toFixed(2)} $`;
 }
 
+/** Clé "AAAA-MM" à partir d'une année et d'un index de mois (0-11). */
+function ymKey(year, monthIdx) {
+    return `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+}
+
+function parseKey(key) {
+    const [y, m] = key.split('-').map(Number);
+    return { year: y, month: m - 1 };
+}
+
+/**
+ * Toutes les dépenses applicables à un mois donné, y compris les récurrentes :
+ * - 'once'     : seulement le mois de saisie
+ * - 'monthly'  : chaque mois depuis la saisie
+ * - 'annual'   : chaque année au mois anniversaire
+ */
+function getMonthExpenses(year, monthIdx) {
+    const key = ymKey(year, monthIdx);
+    const result = [];
+    const push = (e) => result.push(Object.assign({}, e, {
+        month: key,
+        frequency: e.frequency || 'once'
+    }));
+
+    // dépenses uniques + annuelles saisies directement ce mois-ci
+    const d = budgetData[key];
+    ((d && d.expenses) || []).forEach(e => {
+        if ((e.frequency || 'once') !== 'monthly') push(e);
+    });
+
+    // dépenses récurrentes, de cette année ou des années précédentes
+    Object.keys(budgetData).forEach(k => {
+        const p = parseKey(k);
+        if (isNaN(p.year) || isNaN(p.month) || p.year > year) return;
+        ((budgetData[k].expenses) || []).forEach(e => {
+            const freq = e.frequency || 'once';
+            if (freq === 'monthly') {
+                push(e); // chaque mois
+            } else if (freq === 'annual' && p.month === monthIdx && k !== key) {
+                push(e); // mois anniversaire (les annuelles de ce mois sont déjà ajoutées)
+            }
+        });
+    });
+    return result;
+}
+
+function getMonthIncome(year, monthIdx) {
+    const d = budgetData[ymKey(year, monthIdx)];
+    return (d && d.income) || 0;
+}
+
+function getMonthData(year, monthIdx) {
+    return { income: getMonthIncome(year, monthIdx), expenses: getMonthExpenses(year, monthIdx) };
+}
+
+/**
+ * Dépenses annuelles applicables à une année donnée (saisies cette année-là ou avant),
+ * chacune retournée une seule fois quel que soit son mois anniversaire.
+ */
+function getYearAnnuals(year) {
+    const annuals = [];
+    Object.keys(budgetData).forEach(k => {
+        const p = parseKey(k);
+        if (isNaN(p.year) || p.year > year) return;
+        ((budgetData[k].expenses) || []).forEach(e => {
+            if ((e.frequency || 'once') === 'annual') annuals.push(e);
+        });
+    });
+    return annuals;
+}
+
+/**
+ * Données d'un mois pour la VUE ANNUELLE : dépenses uniques et mensuelles en entier,
+ * plus chaque dépense annuelle répartie uniformément (montant/12) sous sa catégorie.
+ * Les coûts annuels ne s'empilent plus sur un seul mois.
+ */
+function getYearlyMonthData(year, monthIdx) {
+    const key = ymKey(year, monthIdx);
+    const md = getMonthData(year, monthIdx);
+    const expenses = md.expenses
+        .filter(e => (e.frequency || 'once') !== 'annual')
+        .map(e => Object.assign({}, e));
+    getYearAnnuals(year).forEach(e => {
+        expenses.push(Object.assign({}, e, {
+            amount: e.amount / 12,
+            month: key,
+            frequency: 'annual',
+            prorated: true
+        }));
+    });
+    return { income: md.income, expenses };
+}
+
+function findExpense(id) {
+    for (const key of Object.keys(budgetData)) {
+        const expense = ((budgetData[key].expenses) || []).find(e => e.id === id);
+        if (expense) return { key, expense };
+    }
+    return null;
+}
+
 // Retourne { income, expenses } pour la période courante
 function getPeriodData() {
+    const year = currentDate.getFullYear();
     if (viewMode === 'monthly') {
-        const d = budgetData[getMonthKey()] || { income: 0, expenses: [] };
-        return { income: d.income || 0, expenses: d.expenses || [] };
+        return getMonthData(year, currentDate.getMonth());
     }
     let income = 0;
     let expenses = [];
-    getYearKeys().forEach(key => {
-        const d = budgetData[key];
-        if (!d) return;
-        income += d.income || 0;
-        expenses = expenses.concat((d.expenses || []).map(e => ({ ...e, month: key })));
-    });
+    for (let i = 0; i < 12; i++) {
+        const md = getYearlyMonthData(year, i);
+        income += md.income;
+        expenses = expenses.concat(md.expenses);
+    }
     return { income, expenses };
 }
 
@@ -128,9 +235,25 @@ function updatePeriodDisplay() {
 
 function refreshAll() {
     updatePeriodDisplay();
+    syncExpenseMonthInput();
     updateSummary();
     displayExpenses();
     updateCharts();
+}
+
+/* ---------- Sélecteur de mois du formulaire ---------- */
+
+/** Clé du mois choisi dans le formulaire (validée), ou le mois affiché. */
+function getExpenseMonthKey() {
+    const el = document.getElementById('expenseMonth');
+    if (el && /^\d{4}-(0[1-9]|1[0-2])$/.test(el.value)) return el.value;
+    return getMonthKey();
+}
+
+/** Le sélecteur suit par défaut le mois affiché. */
+function syncExpenseMonthInput() {
+    const el = document.getElementById('expenseMonth');
+    if (el && document.activeElement !== el) el.value = getMonthKey();
 }
 
 /* ---------- Saisie ---------- */
@@ -157,7 +280,10 @@ function addExpense() {
     if (!name) { alert('Veuillez entrer un nom de dépense'); return; }
     if (!amount || amount <= 0) { alert('Veuillez entrer un montant valide'); return; }
 
-    const monthKey = getMonthKey();
+    const freqEl = document.getElementById('expenseFrequency');
+    const frequency = (freqEl && FREQUENCIES.includes(freqEl.value)) ? freqEl.value : 'once';
+
+    const monthKey = getExpenseMonthKey();
     if (!budgetData[monthKey]) budgetData[monthKey] = { income: 0, expenses: [] };
 
     budgetData[monthKey].expenses.push({
@@ -165,6 +291,7 @@ function addExpense() {
         name: name,
         amount: amount,
         category: category,
+        frequency: frequency,
         date: new Date().toISOString()
     });
 
@@ -175,10 +302,9 @@ function addExpense() {
 }
 
 function editExpense(id) {
-    const monthKey = getMonthKey();
-    if (!budgetData[monthKey]) return;
-    const expense = budgetData[monthKey].expenses.find(e => e.id === id);
-    if (!expense) return;
+    const found = findExpense(id);
+    if (!found) return;
+    const expense = found.expense;
 
     const newName = prompt('Nouveau nom de la dépense:', expense.name);
     if (newName === null) return;
@@ -199,9 +325,20 @@ function editExpense(id) {
     const categoryIndex = parseInt(categoryChoice) - 1;
     if (categoryIndex < 0 || categoryIndex >= CATEGORIES.length) { alert('Catégorie invalide'); return; }
 
+    const freqChoice = prompt(
+        'Choisir une fréquence (entrer le numéro):\n' +
+        FREQUENCIES.map((f, i) => `${i + 1}. ${FREQUENCY_LABELS[f]}`).join('\n'),
+        FREQUENCIES.indexOf(expense.frequency || 'once') + 1
+    );
+    if (freqChoice === null) return;
+
+    const freqIndex = parseInt(freqChoice) - 1;
+    if (freqIndex < 0 || freqIndex >= FREQUENCIES.length) { alert('Fréquence invalide'); return; }
+
     expense.name = newName.trim();
     expense.amount = parsedAmount;
     expense.category = CATEGORIES[categoryIndex];
+    expense.frequency = FREQUENCIES[freqIndex];
 
     saveData();
     refreshAll();
@@ -209,9 +346,9 @@ function editExpense(id) {
 
 function deleteExpense(id) {
     if (!confirm('Supprimer cette dépense?')) return;
-    const monthKey = getMonthKey();
-    if (budgetData[monthKey]) {
-        budgetData[monthKey].expenses = budgetData[monthKey].expenses.filter(e => e.id !== id);
+    const found = findExpense(id);
+    if (found) {
+        budgetData[found.key].expenses = budgetData[found.key].expenses.filter(e => e.id !== id);
         saveData();
         refreshAll();
     }
@@ -221,6 +358,32 @@ function deleteExpense(id) {
 
 function displayExpenses() {
     const expensesList = document.getElementById('expensesList');
+    const year = currentDate.getFullYear();
+
+    if (isYearly()) {
+        // Résumé par mois (dépenses annuelles réparties sur les 12 mois)
+        const rows = [];
+        for (let i = 0; i < 12; i++) {
+            const md = getYearlyMonthData(year, i);
+            const total = md.expenses.reduce((s, e) => s + e.amount, 0);
+            const income = md.income;
+            if (total === 0 && income === 0) continue;
+            const solde = income - total;
+            rows.push(`
+                <div class="expense-item">
+                    <div class="expense-info">
+                        <div class="expense-name">${MONTH_NAMES[i]}</div>
+                        <div class="expense-category">Revenu: ${money(income)} &bull; Solde: ${money(solde)}</div>
+                    </div>
+                    <span class="expense-amount">${money(total)}</span>
+                </div>`);
+        }
+        expensesList.innerHTML = rows.length
+            ? rows.join('')
+            : '<p style="text-align: center; color: #999; padding: 20px;">Aucune dépense pour le moment</p>';
+        return;
+    }
+
     const { expenses } = getPeriodData();
 
     if (expenses.length === 0) {
@@ -228,33 +391,11 @@ function displayExpenses() {
         return;
     }
 
-    if (isYearly()) {
-        // Résumé par mois
-        const rows = getYearKeys().map((key, i) => {
-            const d = budgetData[key];
-            if (!d) return null;
-            const total = (d.expenses || []).reduce((s, e) => s + e.amount, 0);
-            const income = d.income || 0;
-            if (total === 0 && income === 0) return null;
-            const solde = income - total;
-            return `
-                <div class="expense-item">
-                    <div class="expense-info">
-                        <div class="expense-name">${MONTH_NAMES[i]}</div>
-                        <div class="expense-category">Revenu: ${money(income)} &bull; Solde: ${money(solde)}</div>
-                    </div>
-                    <span class="expense-amount">${money(total)}</span>
-                </div>`;
-        }).filter(Boolean);
-        expensesList.innerHTML = rows.join('');
-        return;
-    }
-
     expensesList.innerHTML = expenses.map(expense => `
         <div class="expense-item">
             <div class="expense-info">
                 <div class="expense-name">${expense.name}</div>
-                <div class="expense-category">${expense.category}</div>
+                <div class="expense-category">${expense.category} &bull; ${frequencyLabel(expense.frequency)}</div>
             </div>
             <span class="expense-amount">${money(expense.amount)}</span>
             <button class="edit-btn" onclick="editExpense(${expense.id})">Modifier</button>
@@ -324,10 +465,11 @@ function updateCharts() {
     let barLabels, barValues, barColors;
     if (isYearly()) {
         barLabels = MONTH_NAMES.map(m => m.substring(0, 3));
-        barValues = getYearKeys().map(key => {
-            const d = budgetData[key];
-            return d ? (d.expenses || []).reduce((s, e) => s + e.amount, 0) : 0;
-        });
+        barValues = [];
+        for (let i = 0; i < 12; i++) {
+            barValues.push(getYearlyMonthData(currentDate.getFullYear(), i)
+                .expenses.reduce((s, e) => s + e.amount, 0));
+        }
         barColors = barValues.map(() => '#D6A96A');
     } else {
         barLabels = categories;
@@ -476,17 +618,18 @@ function exportPDF() {
     doc.setFontSize(10);
 
     if (isYearly()) {
-        getYearKeys().forEach((key, i) => {
-            const d = budgetData[key];
-            if (!d) return;
-            const tot = (d.expenses || []).reduce((s, e) => s + e.amount, 0);
-            if (tot === 0 && !(d.income)) return;
+        const year = currentDate.getFullYear();
+        for (let i = 0; i < 12; i++) {
+            const md = getYearlyMonthData(year, i);
+            const tot = md.expenses.reduce((s, e) => s + e.amount, 0);
+            const inc = md.income;
+            if (tot === 0 && !inc) continue;
             doc.text(MONTH_NAMES[i], 16, y);
-            doc.text(`Revenu ${money(d.income || 0)}`, 70, y);
+            doc.text(`Revenu ${money(inc)}`, 70, y);
             doc.text(`Dépenses ${money(tot)}`, 130, y);
             y += 6;
             if (y > 275) { doc.addPage(); y = 20; }
-        });
+        }
     } else {
         expenses.forEach(e => {
             doc.text(e.name.substring(0, 30), 16, y);
