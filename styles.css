@@ -76,6 +76,14 @@ h1 {
     margin-bottom: 22px;
 }
 
+.title-icon {
+    width: 1.15em;
+    height: 1.15em;
+    border-radius: 0.3em;
+    vertical-align: -0.18em;
+    margin-right: 0.08em;
+}
+
 .view-toggle {
     display: inline-flex;
     border: 1px solid var(--line);
