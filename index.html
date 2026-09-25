@@ -58,6 +58,12 @@
                     <div class="input-group">
                         <input type="text" id="expenseName" placeholder="Nom de la d&eacute;pense">
                         <input type="number" id="expenseAmount" placeholder="Montant" step="0.01">
+                        <input type="month" id="expenseMonth" title="Mois de la dépense">
+                        <select id="expenseFrequency">
+                            <option value="once">Une fois</option>
+                            <option value="monthly">&#128260; Mensuelle (récurrente)</option>
+                            <option value="annual">&#128197; Annuelle (récurrente)</option>
+                        </select>
                         <select id="expenseCategory">
                             <option value="Logement">&#127968; Logement</option>
                             <option value="Nourriture">&#127828; Nourriture</option>
