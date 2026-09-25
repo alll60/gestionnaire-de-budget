@@ -31,6 +31,21 @@ const categoryColors = {
     'Autre': '#7E8A92'
 };
 
+const CATEGORY_ICONS = {
+    'Logement': 'icons/housing.webp',
+    'Nourriture': 'icons/food.webp',
+    'Transport': 'icons/transport.webp',
+    'Services': 'icons/utilities.webp',
+    'Divertissement': 'icons/entertainment.webp',
+    'Santé': 'icons/healthcare.webp',
+    'Magasinage': 'icons/shopping.webp',
+    'Autre': 'icons/other.webp'
+};
+
+function categoryIcon(category) {
+    return CATEGORY_ICONS[category] || CATEGORY_ICONS['Autre'];
+}
+
 // Accord des graphiques avec le fond sombre
 Chart.defaults.color = '#8B8F94';
 Chart.defaults.font.family = "'IBM Plex Sans', sans-serif";
@@ -393,6 +408,7 @@ function displayExpenses() {
 
     expensesList.innerHTML = expenses.map(expense => `
         <div class="expense-item">
+            <img class="cat-icon" src="${categoryIcon(expense.category)}" alt="${expense.category}">
             <div class="expense-info">
                 <div class="expense-name">${expense.name}</div>
                 <div class="expense-category">${expense.category} &bull; ${frequencyLabel(expense.frequency)}</div>
@@ -426,11 +442,93 @@ function getCategoryTotals() {
     return totals;
 }
 
+/* ---------- Color shading: N distinct shades of one hex color ---------- */
+
+function hexToHsl(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+    }
+    return [h * 360, s * 100, l * 100];
+}
+
+function hslToHex(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) {
+        r = g = b = l;
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
+    }
+    const toHex = x => Math.round(x * 255).toString(16).padStart(2, '0');
+    return '#' + toHex(r) + toHex(g) + toHex(b);
+}
+
+// n shades of hex, darkest first, spread across a lightness range
+function makeShades(hex, n) {
+    if (n <= 1) return [hex];
+    const [h, s, l] = hexToHsl(hex);
+    const span = 38;
+    const shades = [];
+    for (let i = 0; i < n; i++) {
+        const nl = Math.min(88, Math.max(12, l - span / 2 + (i / (n - 1)) * span));
+        shades.push(hslToHex(h, s, nl));
+    }
+    return shades;
+}
+
 function updateCharts() {
     const categoryTotals = getCategoryTotals();
     const categories = Object.keys(categoryTotals);
     const amounts = Object.values(categoryTotals);
     const colors = categories.map(cat => categoryColors[cat] || '#7E8A92');
+
+    // Doughnut: one slice per expense, each a different shade of its category
+    // color, in monthly view; one slice per category in yearly view.
+    let pieLabels, pieData, pieColors, pieCats;
+    if (isYearly()) {
+        pieLabels = categories;
+        pieData = amounts;
+        pieColors = colors;
+        pieCats = categories;
+    } else {
+        const { expenses } = getPeriodData();
+        const byCat = {};
+        expenses.forEach(e => { (byCat[e.category] = byCat[e.category] || []).push(e); });
+        pieLabels = []; pieData = []; pieColors = []; pieCats = [];
+        categories.forEach(cat => {
+            const items = (byCat[cat] || []).slice().sort((a, b) => b.amount - a.amount);
+            const shades = makeShades(categoryColors[cat] || '#7E8A92', items.length);
+            items.forEach((e, i) => {
+                pieLabels.push(e.name);
+                pieData.push(e.amount);
+                pieColors.push(shades[i]);
+                pieCats.push(cat);
+            });
+        });
+    }
 
     if (pieChart) pieChart.destroy();
     if (barChart) barChart.destroy();
@@ -439,8 +537,8 @@ function updateCharts() {
     pieChart = new Chart(pieCtx, {
         type: 'doughnut',
         data: {
-            labels: categories,
-            datasets: [{ data: amounts, backgroundColor: colors, borderWidth: 2, borderColor: '#0E0F11' }]
+            labels: pieLabels,
+            datasets: [{ data: pieData, backgroundColor: pieColors, borderWidth: 2, borderColor: '#0E0F11' }]
         },
         options: {
             responsive: true,
@@ -453,7 +551,9 @@ function updateCharts() {
                             const value = context.parsed || 0;
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const pct = total ? ((value / total) * 100).toFixed(1) : 0;
-                            return `${context.label}: ${money(value)} (${pct}%)`;
+                            const cat = pieCats[context.dataIndex];
+                            const name = context.label === cat ? context.label : `${context.label} (${cat})`;
+                            return `${name}: ${money(value)} (${pct}%)`;
                         }
                     }
                 }
